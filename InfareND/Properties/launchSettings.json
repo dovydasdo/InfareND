@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "InfareND": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
