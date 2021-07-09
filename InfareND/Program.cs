@@ -21,7 +21,6 @@ namespace InfareND
 
         private static async Task StartCrawlerasync()
         {
-
             string datesUrl = Urls.DatesUrl;
 
             CookieContainer cookies = new CookieContainer();
@@ -72,8 +71,10 @@ namespace InfareND
                     double flexPrice = Convert.ToDouble(timeAndPrice.SelectNodes("//td[contains(@class, 'fareselect standardflex endcell')]").FirstOrDefault().FirstChild.FirstChild.InnerText);
 
                     double cheapestPrice = GetCheapest(lowFarePrice, lowFarePlusPrice, flexPrice);
-
-
+                    /* Atfer 3rd request response comes without default 
+                     * flyght type selected, so no tax info in html, 
+                     * could be a problem if flights have differnt taxes.
+                     */
                     if (taxes == 0.0)
                     {
                         taxes = Convert.ToDouble(htmlDoc.DocumentNode.SelectNodes("//td[contains(@class, 'rightcell emphasize')]").LastOrDefault().InnerText.Replace("$", ""));
@@ -95,9 +96,7 @@ namespace InfareND
                         DepartureAirport = ariportNames.Descendants("td").Where(node => node.GetAttributeValue("class", "").Equals("depdest")).ToList().First().FirstChild.InnerText,
                         ArrivalAirport = ariportNames.Descendants("td").Where(node => node.GetAttributeValue("class", "").Equals("arrdest")).ToList().First().FirstChild.InnerText
                     };
-
                     flights.Add(flight);
-
                 }
                 catch
                 {
