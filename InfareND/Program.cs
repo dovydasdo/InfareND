@@ -11,60 +11,18 @@ using System.Threading.Tasks;
 
 namespace InfareND
 {
-    public class Day
-    {
-        public DateTime date { get; set; }
-        public double price { get; set; }
-        public double standardPrice { get; set; }
-        public string displayPrice { get; set; }
-        public string standardDisplayPrice { get; set; }
-        public bool isSoldOut { get; set; }
-        public int transitCount { get; set; }
-        public bool isAgreementPrice { get; set; }
-    }
-
-    public class Outbound
-    {
-        public List<Day> days { get; set; }
-    }
-
-    public class Info
-    {
-        public string title { get; set; }
-        public List<object> messages { get; set; }
-        public object redirectUrl { get; set; }
-        public object callToActionText { get; set; }
-        public bool isCampaignCodeInvalid { get; set; }
-    }
-
-    public class Root
-    {
-        public Outbound outbound { get; set; }
-        public object inbound { get; set; }
-        public Info info { get; set; }
-        public string gtmEventAsJson { get; set; }
-        public List<object> subsidyDiscounts { get; set; }
-        public string currencyCode { get; set; }
-        public bool isPremiumAvailable { get; set; }
-        public string metaTitle { get; set; }
-        public string metaDescription { get; set; }
-        public string pageUrlPath { get; set; }
-        public string eventType { get; set; }
-    }
-
-
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            startCrawlerasync();
+            await StartCrawlerasync();
             Console.ReadLine();
         }
 
-        private static async Task startCrawlerasync()
+        private static async Task StartCrawlerasync()
         {
 
-            string datesUrl = "https://www.norwegian.com/api/fare-calendar/calendar?adultCount=1&destinationAirportCode=FCO&originAirportCode=OSL&outboundDate=2021-11-01&tripType=1&currencyCode=USD&languageCode=en-US&pageId=258774&eventType=init";
+            string datesUrl = Urls.DatesUrl;
 
             CookieContainer cookies = new CookieContainer();
             HttpClientHandler handler = new HttpClientHandler();
@@ -81,22 +39,16 @@ namespace InfareND
 
             httpClient = SetHeaders(httpClient, cookieValue);
 
-            List<Day> days = null;
-            try
-            {
-                var response = await httpClient.GetStringAsync(datesUrl);
-                dynamic obj = JsonConvert.DeserializeObject(response);
-                var items = obj.ToObject<Root>();
-                days = items.outbound.days;
-            }
-            catch (HttpRequestException e)
-            {
-                Console.WriteLine(e.Message);
-            }
+            List<Day> days = await GetDays(datesUrl, httpClient);
 
             List<int> validDates = GetValidDays(days);
+            List<Flight> flights = await GetFlighstData(httpClient, validDates);
+            WriteData(flights);
+        }
 
-            string flightUrl = "https://www.norwegian.com/us/ipc/availability/avaday?AdultCount=1&A_City=FCO&D_City=OSL&D_Month=202111&D_Day={DAYNUM}&IncludeTransit=false&TripType=1&CurrencyCode=USD&dFare=66";
+        private static async Task<List<Flight>> GetFlighstData(HttpClient httpClient, List<int> validDates)
+        {
+            string flightUrl = Urls.FlightUrl;
             List<Flight> flights = new List<Flight>();
 
             double taxes = 0.0;
@@ -129,19 +81,9 @@ namespace InfareND
 
                     cheapestPrice = cheapestPrice - taxes;
 
-                    string fullDepDate =
-                        "2021-11-" +
-                        day +
-                        " " +
-                        timeAndPrice.SelectNodes("//td[contains(@class, 'depdest')]").FirstOrDefault().FirstChild.InnerText
-                        ;
+                    string fullDepDate = $"2021-11-{day} {timeAndPrice.SelectNodes("//td[contains(@class, 'depdest')]").FirstOrDefault().FirstChild.InnerText}";
+                    string fullArrDate = $"2021-11-{day} {timeAndPrice.SelectNodes("//td[contains(@class, 'arrdest')]").FirstOrDefault().FirstChild.InnerText}";
 
-                    string fullArrDate =
-                        "2021-11-" +
-                        day +
-                        " " +
-                        timeAndPrice.SelectNodes("//td[contains(@class, 'arrdest')]").FirstOrDefault().FirstChild.InnerText
-                        ;
                     DateTime depDate = DateTime.ParseExact(fullDepDate, "yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
                     DateTime arrDate = DateTime.ParseExact(fullArrDate, "yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
                     Flight flight = new Flight
@@ -157,11 +99,35 @@ namespace InfareND
                     flights.Add(flight);
 
                 }
-                catch (Exception e)
+                catch
                 {
                     throw;
                 }
             }
+
+            return flights;
+        }
+
+        private static async Task<List<Day>> GetDays(string datesUrl, HttpClient httpClient)
+        {
+            List<Day> days = null;
+            try
+            {
+                var response = await httpClient.GetStringAsync(datesUrl);
+                dynamic obj = JsonConvert.DeserializeObject(response);
+                var items = obj.ToObject<Root>();
+                days = items.outbound.days;
+            }
+            catch (HttpRequestException e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+            return days;
+        }
+
+        private static void WriteData(List<Flight> flights)
+        {
             using (StreamWriter file = File.CreateText(@"C:\Users\dovyd\source\repos\InfareND\InfareND\flights.json"))
             {
                 JsonSerializer serializer = new JsonSerializer();
@@ -171,7 +137,7 @@ namespace InfareND
 
         private static string GetCookieString(IEnumerable<Cookie> responseCookies)
         {
-            string cookieValue = "";
+            string cookieValue = string.Empty;
 
             foreach (Cookie cookie in responseCookies)
             {
@@ -183,20 +149,12 @@ namespace InfareND
 
         private static HttpClient SetHeaders(HttpClient httpClient, string cookieValue)
         {
-            try
-            {
-                httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-                httpClient.DefaultRequestHeaders.Add("Accept", "text/html");
-                httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US;q=0.9,en;q=0.8,ru;q=0.7,pl;q=0.6");
-                httpClient.DefaultRequestHeaders.Add("Cache-Control", "max-age=0");
-                httpClient.DefaultRequestHeaders.Add("Referer", "https://www.norwegian.com/us/low-fare-calendar/?AdultCount=1&A_City=FCO&D_City=OSL&D_Month=202111&D_Day=01&IncludeTransit=false&TripType=1");
-                httpClient.DefaultRequestHeaders.Add("cookie", cookieValue);
-            }
-            catch (Exception e)
-            {
-                throw;
-            }
-
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            httpClient.DefaultRequestHeaders.Add("Accept", "text/html");
+            httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US;q=0.9,en;q=0.8,ru;q=0.7,pl;q=0.6");
+            httpClient.DefaultRequestHeaders.Add("Cache-Control", "max-age=0");
+            httpClient.DefaultRequestHeaders.Add("Referer", "https://www.norwegian.com/us/low-fare-calendar/?AdultCount=1&A_City=FCO&D_City=OSL&D_Month=202111&D_Day=01&IncludeTransit=false&TripType=1");
+            httpClient.DefaultRequestHeaders.Add("cookie", cookieValue);
             return httpClient;
         }
 
